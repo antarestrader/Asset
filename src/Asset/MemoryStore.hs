@@ -1,8 +1,16 @@
-module Asset.MemoryStore where
+{-# LANGUAGE ScopedTypeVariables #-}
+
+module Asset.MemoryStore 
+  ( newMemoryStore
+  , MemoryStore
+  )
+
+where
 
 import Prelude hiding (lookup)
+import Control.Monad
 import Control.Concurrent.MVar
-import Data.Map (Map, lookup, insertWith, empty, delete)
+import Data.Map (Map, lookup, insertWith, empty, delete, elems)
 import Data.Aeson
 import Data.Maybe
 import Data.Typeable
@@ -37,6 +45,24 @@ lookupRef ref (MS mv1) =  runMaybeT $ do
   tbl <- MaybeT $ lookup' (assetType ref) mv1
   MaybeT $ lookup' (assetIndex ref) (contents tbl) 
 
+findMS :: forall a. Asset a => MemoryStore -> Query -> IO [a]
+findMS (MS mv1) All = do
+    mmv <- lookup' tblname mv1
+    case mmv of
+      Nothing -> return []
+      Just table -> do
+        mv_values <- elems <$> readMVar (contents table)
+        foldM extract []  mv_values
+  where
+    typ :: a
+    typ = undefined  --Type Hackery
+    tblname = show $ typeOf typ
+    extract acc mv = do
+      value <- readMVar mv
+      case fromJSON value of
+        Error _ -> return acc
+        Success x -> return (x:acc)
+        
 
 instance AssetStore MemoryStore where
   loadAsset ms ref = do
@@ -48,6 +74,8 @@ instance AssetStore MemoryStore where
         case fromJSON val of 
           Error s -> return $ Left s
           Success a -> return $ Right a
+
+  findAsset = findMS
 
   storeAsset (MS mv1) a =do 
     case ident a of

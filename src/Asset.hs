@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveGeneric, GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE DeriveGeneric, GeneralizedNewtypeDeriving, GADTs #-}
 
 module Asset where
 
@@ -28,6 +28,14 @@ class (Typeable a,ToJSON a, FromJSON a) => Asset a where
   updateIdent :: Ident -> a -> a
   name :: a -> String
 
+data SortOrder = Ascending | Descending
+
+data Query where
+ All   :: Query
+ First :: Query
+ Field :: String -> Value -> Query
+ Sort  :: [(String, SortOrder)] -> Query -> Query
+
 newIdent = Ident Nothing
 
 setIdent :: Asset a => Int -> a -> a
@@ -47,6 +55,7 @@ class AssetStore s where
   loadAsset     :: Asset a => s -> Reference -> IO (Either String a)
   loadAllAssets :: Asset a => s -> [Reference] -> IO ([String], [a])
   loadAllAssets s xs = fmap partitionEithers (mapM (loadAsset s) xs)
+  findAsset     :: Asset a => s -> Query -> IO [a]
   storeAsset    :: Asset a => s -> a -> IO (Maybe a)
   deleteAsset   :: Asset a => s -> a -> IO Bool
   deleteAsset ms a = case ident a of
@@ -56,6 +65,7 @@ class AssetStore s where
 
 class (Monad m) => AssetClass m where
   load   ::  Asset a => Reference -> m (Either String a)
+  find   ::  Asset a => Query -> m [a]
   store  ::  Asset a => a -> m (Maybe a)
   delete ::  Asset a =>  a -> m Bool
   remove ::  Reference -> m Bool
@@ -69,6 +79,9 @@ instance (AssetStore as, MonadIO m) => AssetClass (AssetT as m ) where
   load r = do
     s <- ask
     liftIO $ loadAsset s r
+  find q = do
+    s <- ask
+    liftIO $ findAsset s q
   store a = do
     s <- ask
     liftIO $ storeAsset s a
