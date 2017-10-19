@@ -13,7 +13,7 @@ data Reference = Ref {
     assetType:: String
   , assetIndex :: Int
   , label :: String
-  } deriving (Eq, Show, Generic)
+  } deriving (Eq, Ord, Show, Generic)
 
 newtype Ident = Ident (Maybe Reference)
   deriving (Eq, Show, Generic)
@@ -30,16 +30,22 @@ class (Typeable a,ToJSON a, FromJSON a) => Asset a where
 
 data SortOrder = Ascending | Descending
 
+data Comparison a =
+    GT a | LT a | EQ a | GTE a | LTE a
+  | AND (Comparison a) (Comparison a)
+  | OR  (Comparison a) (Comparison a)
+
 data Query where
- All   :: Query
- First :: Query
- Field :: String -> Value -> Query
- Sort  :: [(String, SortOrder)] -> Query -> Query
+ All    :: Query
+ First  :: Query -> Query
+ Field  :: String -> Value -> Query
+ Sort   :: [(String, SortOrder)] -> Query -> Query
+ Filter :: [(String, Comparison Value)] -> Query
 
 newIdent = Ident Nothing
 
 setIdent :: Asset a => Int -> a -> a
-setIdent i a = updateIdent (Ident $ Just (Ref (show $ typeOf a) i (name a))) a 
+setIdent i a = updateIdent (Ident $ Just (Ref (show $ typeOf a) i (name a))) a
 
 isNew :: Asset a => a -> Bool
 isNew a = case (ident a) of
@@ -70,7 +76,7 @@ class (Monad m) => AssetClass m where
   delete ::  Asset a =>  a -> m Bool
   remove ::  Reference -> m Bool
 
-newtype AssetT as m  a = AssetM { unAsset :: ReaderT as m a} 
+newtype AssetT as m  a = AssetM { unAsset :: ReaderT as m a}
   deriving (Functor, Applicative, Monad, MonadReader as, MonadIO)
 
 type AssetM as = AssetT as IO

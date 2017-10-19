@@ -1,6 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Asset.MemoryStore 
+module Asset.MemoryStore
   ( newMemoryStore
   , MemoryStore
   )
@@ -12,6 +12,8 @@ import Control.Monad
 import Control.Concurrent.MVar
 import Data.Map (Map, lookup, insertWith, empty, delete, elems)
 import Data.Aeson
+import Data.Text (pack)
+import qualified Data.HashMap.Lazy as H
 import Data.Maybe
 import Data.Typeable
 import Control.Monad.Trans.Maybe
@@ -19,11 +21,16 @@ import Control.Monad.IO.Class
 
 import Asset hiding (AssetClass(..))
 
+type TableName = String
+
 data Table a = Table { contents :: MVar (Map Int (MVar a)), idx :: MVar Int}
 
-data MemoryStore = MS (MVar (Map String (Table Value)))
+data MemoryStore = MS (MVar (Map TableName (Table Value)))
 
 newMemoryStore = MS <$> newMVar empty
+
+tableName :: Typeable a => a -> TableName
+tableName a = show $ typeOf a
 
 newTable :: IO (Table a)
 newTable = do
@@ -32,7 +39,7 @@ newTable = do
   return $ Table {contents = mp, idx=i}
 
 nextIndex :: Table a -> IO Int
-nextIndex tbl = modifyMVar (idx tbl) (\i -> return (i+1,i)) 
+nextIndex tbl = modifyMVar (idx tbl) (\i -> return (i+1,i))
 
 newRow ::(Ord k) => k -> v -> (MVar (Map k v)) -> IO()
 newRow k v mv = modifyMVar_ mv (return . insertWith (flip const) k v)
@@ -43,26 +50,50 @@ lookup' k mv = lookup k `fmap` readMVar mv
 lookupRef :: Reference -> MemoryStore -> IO (Maybe (MVar Value))
 lookupRef ref (MS mv1) =  runMaybeT $ do
   tbl <- MaybeT $ lookup' (assetType ref) mv1
-  MaybeT $ lookup' (assetIndex ref) (contents tbl) 
+  MaybeT $ lookup' (assetIndex ref) (contents tbl)
+
+allOfType ::  MemoryStore -> String -> IO [Value]
+allOfType (MS mv1) tblname = do
+  mmv <- lookup' tblname mv1
+  case mmv of
+    Nothing -> return []
+    Just table -> do
+      withMVar
+        (contents table)
+        (\table ->mapM readMVar (elems table))
+
+test :: Bool -> a -> Maybe a
+test True = Just
+test False = const Nothing
+
+extract :: FromJSON a => Value -> Maybe a
+extract value =
+  case fromJSON value of
+    Error _ -> Nothing
+    Success x -> Just x
 
 findMS :: forall a. Asset a => MemoryStore -> Query -> IO [a]
-findMS (MS mv1) All = do
-    mmv <- lookup' tblname mv1
-    case mmv of
-      Nothing -> return []
-      Just table -> do
-        mv_values <- elems <$> readMVar (contents table)
-        foldM extract []  mv_values
+findMS ms All = (mapMaybe extract) <$> allOfType ms tblname
   where
     typ :: a
     typ = undefined  --Type Hackery
-    tblname = show $ typeOf typ
-    extract acc mv = do
-      value <- readMVar mv
-      case fromJSON value of
-        Error _ -> return acc
-        Success x -> return (x:acc)
-        
+    tblname = tableName typ
+
+findMS ms (Field k val) =  (mapMaybe filter) <$> allOfType ms tblname
+  where
+    typ :: a
+    typ = undefined  --Type Hackery
+    tblname = tableName typ
+    filter :: Value -> Maybe a
+    filter (Object obj) = do
+      v <- H.lookup (pack k) obj
+      guard (v == val)
+      extract (Object obj)
+    filter _ = Nothing
+findMS ms (First q) = take 1 <$> findMS ms q
+
+
+
 
 instance AssetStore MemoryStore where
   loadAsset ms ref = do
@@ -71,13 +102,13 @@ instance AssetStore MemoryStore where
       Nothing -> return $ Left "Not Found"
       Just mv2 -> do
         val <- readMVar mv2
-        case fromJSON val of 
+        case fromJSON val of
           Error s -> return $ Left s
           Success a -> return $ Right a
 
   findAsset = findMS
 
-  storeAsset (MS mv1) a =do 
+  storeAsset (MS mv1) a =do
     case ident a of
       Ident Nothing -> do
         ms <- readMVar mv1
@@ -100,6 +131,6 @@ instance AssetStore MemoryStore where
     tbl <- MaybeT $ lookup' (assetType ref) mv1
     let ix = assetIndex ref
     MaybeT $ modifyMVar (contents tbl) (\mp -> return (delete ix mp,lookup ix mp) )
-      
-    
+
+
 

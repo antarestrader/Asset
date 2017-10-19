@@ -18,13 +18,13 @@ import Asset
 data Update = Update {
     clock :: IO (Int)
   , updaters :: Map String (Int -> Value -> IO())
-  , source :: Int -> IO(Maybe (String, Value)) 
+  , source :: Int -> IO(Maybe (String, Value))
   }
 
 data UpdateAsset = UpdateAsset {
     uaIdent  :: Ident
   , updateAt :: Int
-  , target   :: Reference 
+  , target   :: Reference
   } deriving (Generic, Typeable)
 
 instance ToJSON   UpdateAsset
@@ -44,7 +44,7 @@ updateWorker u = f `fmap` newMVar True
     run :: MVar Bool -> IO()
     run mv = loop mv >>= (\c -> if c then run mv else return ())
     loop mv = withMVar mv $ \r-> do
-      case r of 
+      case r of
         False -> return False
         True -> do
           t <- clock u
@@ -66,7 +66,7 @@ newTicker = f `fmap` newMVar 0
 data Clock = Paused Int
            | Running {start :: POSIXTime, offset :: Int}
 
-newClock :: Double -> 
+newClock :: Double ->
             IO(
                  IO(Int) -- read
                , IO() -- stop / start
