@@ -102,7 +102,9 @@ updateWorker u = f `fmap` newMVar True
             xs -> do mapM_
                        (\x->handle
                               (except u)
-                              (eval u (assetStore u) (target x) t (action x))
+                              (   deleteAsset (assetStore u) x
+                              >>  eval u (assetStore u) (target x) t (action x)
+                              )
                        )
                        xs
                      return True

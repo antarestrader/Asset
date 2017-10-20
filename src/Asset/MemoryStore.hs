@@ -84,7 +84,7 @@ findMS ms (Filter qs) =  (mapMaybe (filter qs)) <$> allOfType ms tblname
     typ = undefined  --Type Hackery
     tblname = tableName typ
     filter ::  [(String, Comparison Value)] -> Value -> Maybe a
-    fliter [] v = extract v
+    filter [] v = extract v
     filter ((k,comp):qs) (Object obj) = do
       v <- H.lookup (pack k) obj
       guard $ eval v comp
@@ -96,8 +96,8 @@ findMS ms (Filter qs) =  (mapMaybe (filter qs)) <$> allOfType ms tblname
     eval v (EQ a) = v == a
     eval v (GT a) = compair (>) v a
     eval v (LT a) = compair (<) v a
-    eval v (GTE a) = compair (<=) v a
-    eval v (LTE a) = compair (>=) v a    
+    eval v (GTE a) = compair (>=) v a
+    eval v (LTE a) = compair (<=) v a
     compair :: (forall b. Ord b => b -> b -> Bool) 
             -> Value 
             -> Value 
