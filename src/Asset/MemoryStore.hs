@@ -1,4 +1,4 @@
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE ScopedTypeVariables, RankNTypes #-}
 
 module Asset.MemoryStore
   ( newMemoryStore
@@ -7,12 +7,12 @@ module Asset.MemoryStore
 
 where
 
-import Prelude hiding (lookup)
+import Prelude hiding (lookup, EQ, GT, LT, LTE, GTE)
 import Control.Monad
 import Control.Concurrent.MVar
 import Data.Map (Map, lookup, insertWith, empty, delete, elems)
 import Data.Aeson
-import Data.Text (pack)
+import Data.Text (pack, unpack)
 import qualified Data.HashMap.Lazy as H
 import Data.Maybe
 import Data.Typeable
@@ -78,7 +78,34 @@ findMS ms All = (mapMaybe extract) <$> allOfType ms tblname
     typ :: a
     typ = undefined  --Type Hackery
     tblname = tableName typ
-
+findMS ms (Filter qs) =  (mapMaybe (filter qs)) <$> allOfType ms tblname
+  where
+    typ :: a
+    typ = undefined  --Type Hackery
+    tblname = tableName typ
+    filter ::  [(String, Comparison Value)] -> Value -> Maybe a
+    fliter [] v = extract v
+    filter ((k,comp):qs) (Object obj) = do
+      v <- H.lookup (pack k) obj
+      guard $ eval v comp
+      filter qs (Object obj)
+    filter _ _ = Nothing
+    eval :: Value -> Comparison Value -> Bool
+    eval v (AND c1 c2) = eval v c1 && eval v c2
+    eval v (OR  c1 c2) = eval v c1 || eval v c2
+    eval v (EQ a) = v == a
+    eval v (GT a) = compair (>) v a
+    eval v (LT a) = compair (<) v a
+    eval v (GTE a) = compair (<=) v a
+    eval v (LTE a) = compair (>=) v a    
+    compair :: (forall b. Ord b => b -> b -> Bool) 
+            -> Value 
+            -> Value 
+            -> Bool
+    compair f (String x) (String y) = unpack x `f` unpack y
+    compair f (Number x) (Number y) = x `f` y
+    -- Todo Array (?)
+    compair _ _ _ = False 
 findMS ms (Field k val) =  (mapMaybe filter) <$> allOfType ms tblname
   where
     typ :: a

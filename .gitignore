@@ -1,4 +1,6 @@
 *.hi
+*.swp
+*~
 *.o
 *.exe
 dist
