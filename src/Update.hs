@@ -23,6 +23,7 @@ module Update
   , UpdateAsset(..)
   , updateWorker
   , schedule
+  , scheduleRef
   )
 where
 
