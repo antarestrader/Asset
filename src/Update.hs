@@ -110,7 +110,7 @@ updateWorker u = f `fmap` newMVar True
                      return True
 
 
--- | Schedule and update within a 'AssetClass' monad.
+-- | Schedule an update within a 'AssetClass' monad.
 schedule :: (Asset a, AssetClass m)
          => a -- ^ The target of this update. It must be an 'Asset'.
          -> Int -- ^ Run the update at or after this time.
@@ -126,6 +126,26 @@ schedule asset time action = do
     { uaIdent  = newIdent
     , updateAt = time
     , target = ref asset
+    , action = action
+    })
+  return (ref <$> ua)
+
+-- | Schedule an update by reference only  within a 'AssetClass' monad.
+scheduleRef :: (AssetClass m)
+         => Reference -- ^ The target of this update.
+         -> Int -- ^ Run the update at or after this time.
+         -> String
+            -- ^ An extra string argument to describe how the assed shoul be
+            --   updated.  This allows the same target to be updated in
+            --   multiple ways.
+         -> m (Maybe Reference)
+            -- ^ if successful, a reference to the update that can be used to
+            --   cancel the action. (Simply 'remove' the reference)
+scheduleRef reference time action = do
+  ua <- store (UpdateAsset
+    { uaIdent  = newIdent
+    , updateAt = time
+    , target = reference
     , action = action
     })
   return (ref <$> ua)
