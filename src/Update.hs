@@ -49,7 +49,7 @@ data Update as = Update {
     --   stored.
   , assetStore  :: as
     -- | A function to update the target asset
-  , eval        :: as -> Reference -> Int -> String -> IO()
+  , eval        :: as -> Reference Void -> Int -> String -> IO()
     -- | This function will be called if 'eval' generates an error.
   , except      :: SomeException -> IO()
   }
@@ -57,9 +57,9 @@ data Update as = Update {
 -- | An asset describing a scheduled update.  Generally use 'schedule' instead
 --   of directly building an UpdateAsset.
 data UpdateAsset = UpdateAsset {
-    uaIdent  :: Ident
+    uaIdent  :: Ident UpdateAsset
   , updateAt :: Int
-  , target   :: Reference
+  , target   :: Reference Void
   , action   :: String
   } deriving (Generic, Typeable)
 
@@ -119,34 +119,34 @@ schedule :: (Asset a, AssetClass m)
             -- ^ An extra string argument to describe how the assed shoul be
             --   updated.  This allows the same target to be updated in
             --   multiple ways.
-         -> m (Maybe Reference)
+         -> m (Maybe (Reference UpdateAsset))
             -- ^ if successful, a reference to the update that can be used to
             --   cancel the action. (Simply 'remove' the reference)
 schedule asset time action = do
   ua <- store (UpdateAsset
     { uaIdent  = newIdent
     , updateAt = time
-    , target = ref asset
+    , target = voidReference $ ref asset
     , action = action
     })
   return (ref <$> ua)
 
 -- | Schedule an update by reference only  within a 'AssetClass' monad.
 scheduleRef :: (AssetClass m)
-         => Reference -- ^ The target of this update.
+         => Reference a -- ^ The target of this update.
          -> Int -- ^ Run the update at or after this time.
          -> String
             -- ^ An extra string argument to describe how the assed shoul be
             --   updated.  This allows the same target to be updated in
             --   multiple ways.
-         -> m (Maybe Reference)
+         -> m (Maybe (Reference UpdateAsset))
             -- ^ if successful, a reference to the update that can be used to
             --   cancel the action. (Simply 'remove' the reference)
 scheduleRef reference time action = do
   ua <- store (UpdateAsset
     { uaIdent  = newIdent
     , updateAt = time
-    , target = reference
+    , target = voidReference reference
     , action = action
     })
   return (ref <$> ua)

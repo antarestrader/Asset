@@ -47,7 +47,7 @@ newRow k v mv = modifyMVar_ mv (return . insertWith (flip const) k v)
 lookup' :: (Ord k) => k -> MVar (Map k v) -> IO (Maybe v)
 lookup' k mv = lookup k `fmap` readMVar mv
 
-lookupRef :: Reference -> MemoryStore -> IO (Maybe (MVar Value))
+lookupRef :: Reference a -> MemoryStore -> IO (Maybe (MVar Value))
 lookupRef ref (MS mv1) =  runMaybeT $ do
   tbl <- MaybeT $ lookup' (assetType ref) mv1
   MaybeT $ lookup' (assetIndex ref) (contents tbl)
@@ -123,16 +123,17 @@ findMS ms (First q) = take 1 <$> findMS ms q
 
 
 instance AssetStore MemoryStore where
-  loadAsset ms ref = do
+  loadAsset ms ref = 
+    loadAssetGeneric id ms (voidReference ref)
+  loadAssetGeneric f ms ref = do
     mmv <- lookupRef ref ms
     case mmv of
       Nothing -> return $ Left "Not Found"
       Just mv2 -> do
         val <- readMVar mv2
-        case fromJSON val of
-          Error s -> return $ Left s
-          Success a -> return $ Right a
-
+        return $ case fromJSON val of
+              Error s -> Left s
+              Success a -> Right (f a)
   findAsset = findMS
 
   storeAsset (MS mv1) a =do

@@ -1,4 +1,5 @@
-{-# LANGUAGE DeriveGeneric, GeneralizedNewtypeDeriving, GADTs #-}
+{-# LANGUAGE DeriveGeneric, GeneralizedNewtypeDeriving, GADTs, 
+    RecordWildCards, RankNTypes #-}
 
 module Asset where
 
@@ -9,23 +10,34 @@ import Data.Kind
 import GHC.Generics
 import Control.Monad.Reader
 
-data Reference = Ref {
+data Reference a = Ref {
     assetType:: String
   , assetIndex :: Int
   , label :: String
   } deriving (Eq, Ord, Show, Generic)
 
-newtype Ident = Ident (Maybe Reference)
+data SomeAsset
+  where Some :: Asset a => a -> SomeAsset
+
+withSomeAsset :: (forall a. Asset a => a -> r) -> (SomeAsset -> r)
+withSomeAsset f (Some a) = f a
+
+data Void = Void
+
+voidReference :: Reference a -> Reference Void
+voidReference (Ref {..}) = Ref {..}
+
+newtype Ident a = Ident (Maybe  (Reference a))
   deriving (Eq, Show, Generic)
 
-instance ToJSON Reference
-instance FromJSON Reference
-instance ToJSON Ident
-instance FromJSON Ident
+instance ToJSON (Reference a)
+instance FromJSON (Reference a)
+instance ToJSON (Ident a)
+instance FromJSON (Ident a)
 
 class (Typeable a,ToJSON a, FromJSON a) => Asset a where
-  ident :: a -> Ident
-  updateIdent :: Ident -> a -> a
+  ident :: a -> Ident a
+  updateIdent :: Ident a -> a -> a
   name :: a -> String
 
 data SortOrder = Ascending | Descending
@@ -52,14 +64,15 @@ isNew a = case (ident a) of
   Ident Nothing -> True
   otherwise -> False
 
-ref :: Asset a => a -> Reference
+ref :: Asset a => a -> Reference a
 ref a = case (ident a) of
   Ident Nothing  -> error "new value"
   Ident (Just r) -> r
 
 class AssetStore s where
-  loadAsset     :: Asset a => s -> Reference -> IO (Either String a)
-  loadAllAssets :: Asset a => s -> [Reference] -> IO ([String], [a])
+  loadAsset     :: Asset a => s -> Reference a -> IO (Either String a)
+  loadAssetGeneric :: Asset a => (a -> b) -> s -> Reference Void ->  IO (Either String b)
+  loadAllAssets :: Asset a => s -> [Reference a] -> IO ([String], [a])
   loadAllAssets s xs = fmap partitionEithers (mapM (loadAsset s) xs)
   findAsset     :: Asset a => s -> Query -> IO [a]
   storeAsset    :: Asset a => s -> a -> IO (Maybe a)
@@ -67,14 +80,14 @@ class AssetStore s where
   deleteAsset ms a = case ident a of
     Ident Nothing    -> return False
     Ident (Just ref) -> deleteRef ms ref
-  deleteRef     :: s -> Reference -> IO Bool
+  deleteRef     :: s -> Reference a -> IO Bool
 
 class (Monad m) => AssetClass m where
-  load   ::  Asset a => Reference -> m (Either String a)
+  load   ::  Asset a => Reference a -> m (Either String a)
   find   ::  Asset a => Query -> m [a]
   store  ::  Asset a => a -> m (Maybe a)
   delete ::  Asset a =>  a -> m Bool
-  remove ::  Reference -> m Bool
+  remove ::  Reference a -> m Bool
 
 newtype AssetT as m  a = AssetM { unAsset :: ReaderT as m a}
   deriving (Functor, Applicative, Monad, MonadReader as, MonadIO)
