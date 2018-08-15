@@ -1,10 +1,33 @@
 {-# LANGUAGE DeriveGeneric, GeneralizedNewtypeDeriving, GADTs, 
-    RecordWildCards, RankNTypes #-}
+    RecordWildCards, RankNTypes, OverloadedStrings #-}
 
-module Asset where
+module Asset (
+    Reference (..)
+  , SomeAsset (..)
+  , withSomeAsset
+  , Asset (..)
+  , AssetStore (..)
+  , AssetClass (..)
+  , Void
+  , voidReference
+  , Ident (..)
+  , newIdent
+  , setIdent
+  , getIdent
+  , SortOrder (..)
+  , Comparison (..)
+  , Query (..)
+  , isNew
+  , ref
+  , AssetT
+  , AssetM
+  , runAssetT
+  , runAssetM
+  )  where
 
 import Data.Aeson
 import Data.Either
+import Data.Monoid ((<>))
 import Data.Typeable
 import Data.Kind
 import GHC.Generics
@@ -14,7 +37,13 @@ data Reference a = Ref {
     assetType:: String
   , assetIndex :: Int
   , label :: String
-  } deriving (Eq, Ord, Show, Generic)
+  } deriving (Show, Generic)
+
+instance Eq (Reference a) where
+  a == b = (assetType a == assetType b) && (assetIndex a == assetIndex b)
+
+instance Ord (Reference a) where
+  compare a b = compare (assetType a) (assetType b) <> compare (assetIndex a) (assetIndex b)
 
 data SomeAsset
   where Some :: Asset a => a -> SomeAsset
@@ -30,8 +59,22 @@ voidReference (Ref {..}) = Ref {..}
 newtype Ident a = Ident (Maybe  (Reference a))
   deriving (Eq, Show, Generic)
 
-instance ToJSON (Reference a)
-instance FromJSON (Reference a)
+instance ToJSON (Reference a) where
+  toJSON = object . set
+  toEncoding = pairs . mconcat . set
+
+set :: (KeyValue kv) => Reference a -> [kv]  
+set r = [ "type"  .= assetType r
+        , "index" .= assetIndex r
+        ,  "label" .= label r
+        ]
+
+instance FromJSON (Reference a) where
+  parseJSON = withObject "Reference" $ \v -> Ref
+    <$> v .:  "type"
+    <*> v .:  "index"
+    <*> v .:? "label" .!= ""
+
 instance ToJSON (Ident a)
 instance FromJSON (Ident a)
 
@@ -58,6 +101,9 @@ newIdent = Ident Nothing
 
 setIdent :: Asset a => Int -> a -> a
 setIdent i a = updateIdent (Ident $ Just (Ref (show $ typeOf a) i (name a))) a
+
+getIdent :: Asset a => a -> Int
+getIdent a = assetIndex $ ref a
 
 isNew :: Asset a => a -> Bool
 isNew a = case (ident a) of
